@@ -1,5 +1,5 @@
-import './App.css'
-
+import './App.css';
+import Connexion from './components/Connexion.tsx';
 import Reservations from './components/Reservations.tsx';
 import { useMemo, useState } from "react";
 
@@ -11,6 +11,13 @@ function App() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [notice, setNotice] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  // Connexion state
+  const [showPassword, setShowPassword] = useState(false);
+
+  const togglePassword = () => setShowPassword(prev => !prev);
+  const handleSuccess = () => setNotice({ message: "Connexion réussie!", type: "success" });
+  const switchToRegister = () => setNotice({ message: "Inscription non implémentée.", type: "info" });
 
   const reservationDuration = useMemo(() => {
     if (!startDate || !endDate) return null;
@@ -51,6 +58,12 @@ function App() {
         onEmailChange={setReservationEmail}
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}
+      />
+      <Connexion 
+        showPassword={showPassword}
+        onTogglePassword={togglePassword}
+        onSuccess={handleSuccess}
+        onSwitchToRegister={switchToRegister}
       />
     </div>
   )
