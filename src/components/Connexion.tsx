@@ -1,4 +1,5 @@
-import { useState } from "react";
+﻿import { useState } from "react";
+import { Link } from "react-router-dom";
 
 type ConnexionProps = {
   showPassword: boolean;
@@ -105,6 +106,17 @@ export default function Connexion({
       >
         Créer un compte
       </button>
+    
+      <div className="text-center text-sm">
+        <Link to="/reset-password" className="link-accent">
+          Mot de passe oublié ?
+        </Link>
+      </div>
     </form>
   );
 }
+
+
+
+
+

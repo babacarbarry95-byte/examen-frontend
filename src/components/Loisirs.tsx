@@ -1,4 +1,4 @@
-const leisureItems = [
+﻿const leisureItems = [
   {
     title: "Salle de sport premium",
     description:
@@ -33,14 +33,14 @@ export default function Loisirs() {
   return (
     <section
       id="loisirs"
-      className="section-anchor py-20 bg-white text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+      className="section-anchor py-24 text-slate-900 dark:text-slate-100"
     >
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex flex-col gap-3 text-center mb-10">
-          <p className="text-sm uppercase tracking-widest text-emerald-600 font-semibold dark:text-emerald-400">
+          <p className="text-xs uppercase tracking-[0.4em] text-emerald-600 font-semibold dark:text-emerald-300">
             Loisirs
           </p>
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+          <h2 className="text-3xl sm:text-4xl font-semibold text-slate-900 dark:text-white">
             Des loisirs dignes d'un hôtel professionnel
           </h2>
           <p className="text-slate-600 max-w-2xl mx-auto dark:text-slate-300">
@@ -53,7 +53,7 @@ export default function Loisirs() {
           {leisureItems.map((item) => (
             <article
               key={item.title}
-              className="group rounded-2xl overflow-hidden border border-slate-200 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg bg-white dark:bg-slate-900 dark:border-slate-800"
+              className="group rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-[0_20px_60px_-40px_rgba(0,0,0,0.15)] transition-all duration-300 hover:-translate-y-1 hover:shadow-emerald-500/20 dark:border-white/10 dark:bg-slate-900"
             >
               <div className="relative h-52">
                 <img
@@ -80,3 +80,6 @@ export default function Loisirs() {
     </section>
   );
 }
+
+
+
