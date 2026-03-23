@@ -5,15 +5,22 @@ type NoticeType = "success" | "error" | "info";
 type ReservationsProps = {
   reservationName: string;
   reservationEmail: string;
+  reservationCity: string;
+  reservationRoomType: string;
+  reservationGuests: number;
   startDate: string;
   endDate: string;
   reservationDuration: number | null;
+  selectedOffer?: string | null;
   title?: string;
   onRequireRegistration: () => boolean;
   onValidSubmit: () => void;
   onNotify: (message: string, type?: NoticeType) => void;
   onNameChange: (value: string) => void;
   onEmailChange: (value: string) => void;
+  onCityChange: (value: string) => void;
+  onRoomTypeChange: (value: string) => void;
+  onGuestsChange: (value: number) => void;
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
 };
@@ -21,15 +28,21 @@ type ReservationsProps = {
 export default function Reservations({
   reservationName,
   reservationEmail,
+  reservationCity,
+  reservationRoomType,
+  reservationGuests,
   startDate,
   endDate,
   reservationDuration,
-
+  selectedOffer,
   onRequireRegistration,
   onValidSubmit,
   onNotify,
   onNameChange,
   onEmailChange,
+  onCityChange,
+  onRoomTypeChange,
+  onGuestsChange,
   onStartDateChange,
   onEndDateChange,
 }: ReservationsProps) {
@@ -60,11 +73,21 @@ export default function Reservations({
   return (
     <section
       id="reservation"
-      className="section-anchor py-20 bg-white text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100"
+      className="section-anchor py-24"
     >
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
-        <h3 className="text-2xl font-bold text-center mb-6">Réservation rapide</h3>
-  
+        <h3 className="text-3xl sm:text-4xl font-semibold text-center mb-8 text-slate-900 dark:text-white">
+          Réservation rapide
+        </h3>
+
+        {selectedOffer && (
+          <div className="mb-4 text-center">
+            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
+              Offre choisie : {selectedOffer}
+            </span>
+          </div>
+        )}
+
         <form
           className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 form-card p-4 sm:p-6"
           onSubmit={handleSubmit}
@@ -77,7 +100,8 @@ export default function Reservations({
               id="reservation-city"
               type="text"
               placeholder="Ville"
-              defaultValue="Dakar"
+              value={reservationCity}
+              onChange={(event) => onCityChange(event.target.value)}
               aria-label="Ville"
               className="input-field"
             />
@@ -120,7 +144,13 @@ export default function Reservations({
             <label htmlFor="reservation-room-type" className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               Type de chambre
             </label>
-            <select id="reservation-room-type" className="input-field" aria-label="Type de chambre">
+            <select
+              id="reservation-room-type"
+              className="input-field"
+              aria-label="Type de chambre"
+              value={reservationRoomType}
+              onChange={(event) => onRoomTypeChange(event.target.value)}
+            >
               <option>Standard</option>
               <option>Deluxe</option>
               <option>Suite</option>
@@ -135,7 +165,8 @@ export default function Reservations({
             <input
               id="reservation-guests"
               type="number"
-              defaultValue={1}
+              value={reservationGuests}
+              onChange={(event) => onGuestsChange(Number(event.target.value))}
               aria-label="Nombre de personnes"
               className="input-field"
             />
@@ -177,7 +208,7 @@ export default function Reservations({
               <div className="alert alert-success">Durée : {reservationDuration} nuit(s)</div>
             ) : (
               <div className="alert alert-warning">
-                Ajoutez des dates valides pour calculer la durée.
+                Ajoutez des dates valides pour calculer la Durée.
               </div>
             )}
             {!hasIdentity && (
