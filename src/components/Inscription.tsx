@@ -260,7 +260,7 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
               value={nationalite}
               onChange={(e) => setNationalite(e.target.value)}
               className={inputBase}
-              placeholder="Francaise"
+              placeholder="Sénégalaise"
             />
           </div>
         </div>
@@ -304,7 +304,7 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
               onChange={(e) => setTelephone(e.target.value)}
               onBlur={() => markTouched("telephone")}
               className={inputBase}
-              placeholder="+33 6 12 34 56 78"
+              placeholder="+221 78 436 84 02"
             />
             {renderError("telephone")}
           </div>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Chambres from "./Chambres";
 import Loisirs from "./Loisirs";
@@ -131,35 +131,40 @@ function App() {
       ? "bg-rose-600 text-white"
       : "bg-slate-900 text-white";
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const navLinks = [
+    { label: "Accueil", href: "#home" },
+    { label: "Chambres", href: "#rooms" },
+    { label: "Réservation", href: "#reservation" },
+    { label: "Nos offres", href: "#offre" },
+    { label: "Loisirs", href: "#loisirs" },
+  ];
+
   return (
     <div className="min-h-screen text-slate-900 dark:text-slate-100">
       {/* Navigation */}
       <header className="fixed top-0 z-10 w-full border-b border-slate-200 bg-white/90 shadow-lg shadow-black/10 backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap justify-between items-center gap-4">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-semibold tracking-tight text-emerald-700 dark:text-emerald-300">
             FABY Hotel
           </h1>
 
-          <nav className="ml-auto flex flex-wrap items-center gap-5 text-sm font-semibold uppercase tracking-widest text-slate-700 dark:text-slate-200/80">
-            <a className="transition hover:text-emerald-700 dark:hover:text-emerald-300" href="#home">
-              Accueil
-            </a>
-            <a className="transition hover:text-emerald-700 dark:hover:text-emerald-300" href="#rooms">
-              Chambres
-            </a>
-            <a className="transition hover:text-emerald-700 dark:hover:text-emerald-300" href="#reservation">
-              Réservation
-            </a>
-            <a className="transition hover:text-emerald-700 dark:hover:text-emerald-300" href="#offre">
-              Nos offres
-            </a>
-            <a className="transition hover:text-emerald-700 dark:hover:text-emerald-300" href="#loisirs">
-              Loisirs
-            </a>
+          {/* Desktop nav */}
+          <nav className="hidden md:flex ml-auto items-center gap-5 text-sm font-semibold uppercase tracking-widest text-slate-700 dark:text-slate-200/80">
+            {navLinks.map((link) => (
+              <a
+                key={link.href}
+                className="transition hover:text-emerald-700 dark:hover:text-emerald-300"
+                href={link.href}
+              >
+                {link.label}
+              </a>
+            ))}
             <Link className="transition hover:text-emerald-700 dark:hover:text-emerald-300" to="/dashboard">
               Dashboard
             </Link>
-             <button
+            <button
               type="button"
               onClick={() => setShowLoginModal(true)}
               className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-emerald-600/25 transition hover:-translate-y-0.5 hover:bg-emerald-500 normal-case tracking-normal"
@@ -169,7 +174,67 @@ function App() {
             
           </nav>
 
+          {/* Burger button — mobile only */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((prev) => !prev)}
+            className="md:hidden flex flex-col items-center justify-center gap-[5px] h-10 w-10 rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-800"
+            aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"}
+            aria-expanded={menuOpen}
+          >
+            <span
+              className={`block h-[2.5px] w-5 rounded-full bg-slate-700 dark:bg-slate-200 transition-all duration-300 ${
+                menuOpen ? "translate-y-[7.5px] rotate-45" : ""
+              }`}
+            />
+            <span
+              className={`block h-[2.5px] w-5 rounded-full bg-slate-700 dark:bg-slate-200 transition-all duration-300 ${
+                menuOpen ? "opacity-0" : ""
+              }`}
+            />
+            <span
+              className={`block h-[2.5px] w-5 rounded-full bg-slate-700 dark:bg-slate-200 transition-all duration-300 ${
+                menuOpen ? "-translate-y-[7.5px] -rotate-45" : ""
+              }`}
+            />
+          </button>
+        </div>
 
+        {/* Mobile menu panel */}
+        <div
+          className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out ${
+            menuOpen ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <nav className="flex flex-col gap-1 px-6 pb-5 text-sm font-semibold uppercase tracking-widest text-slate-700 dark:text-slate-200/80">
+            {navLinks.map((link) => (
+              <a
+                key={link.href}
+                className="rounded-lg px-3 py-2.5 transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
+                href={link.href}
+                onClick={() => setMenuOpen(false)}
+              >
+                {link.label}
+              </a>
+            ))}
+            <Link
+              className="rounded-lg px-3 py-2.5 transition hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
+              to="/dashboard"
+              onClick={() => setMenuOpen(false)}
+            >
+              Dashboard
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setShowLoginModal(true);
+                setMenuOpen(false);
+              }}
+              className="mt-2 rounded-full bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white shadow-md shadow-emerald-600/25 transition hover:bg-emerald-500 normal-case tracking-normal"
+            >
+              Connexion
+            </button>
+          </nav>
         </div>
       </header>
 
@@ -348,7 +413,3 @@ function App() {
 }
 
 export default App;
-
-
-
-
