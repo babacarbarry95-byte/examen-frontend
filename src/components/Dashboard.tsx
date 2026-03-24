@@ -30,8 +30,8 @@ function getReservations(): Reservation[] {
     const seeded: Reservation[] = [
       {
         id: Date.now() - 1000 * 60 * 60 * 24 * 12,
-        name: "Awa Ndiaye",
-        email: "awa.ndiaye@example.com",
+        name: "Moussa Ndiaye",
+        email: "ndiaye@gmail.com",
         city: "Dakar",
         roomType: "Deluxe",
         guests: 2,
@@ -45,8 +45,8 @@ function getReservations(): Reservation[] {
       },
       {
         id: Date.now() - 1000 * 60 * 60 * 24 * 9,
-        name: "Mamadou Diop",
-        email: "mamadou.diop@example.com",
+        name: "Mariama Goundiam",
+        email: "mariama.goundiam@example.com",
         city: "Saly",
         roomType: "Suite",
         guests: 3,
