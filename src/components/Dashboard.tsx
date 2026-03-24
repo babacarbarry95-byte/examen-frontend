@@ -46,7 +46,7 @@ function getReservations(): Reservation[] {
       {
         id: Date.now() - 1000 * 60 * 60 * 24 * 9,
         name: "Mariama Goundiam",
-        email: "mariama.goundiam@example.com",
+        email: "mariama.goundiam@gmail.com",
         city: "Saly",
         roomType: "Suite",
         guests: 3,
@@ -62,7 +62,7 @@ function getReservations(): Reservation[] {
       {
         id: Date.now() - 1000 * 60 * 60 * 24 * 6,
         name: "Fatou Sow",
-        email: "fatou.sow@example.com",
+        email: "fatou.sow@gmail.com",
         city: "Saint-Louis",
         roomType: "Standard",
         guests: 1,
