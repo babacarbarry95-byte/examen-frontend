@@ -1,4 +1,5 @@
 import React from "react";
+import { sanitizeName } from "../lib/input";
 
 type NoticeType = "success" | "error" | "info";
 
@@ -7,6 +8,7 @@ type ReservationsProps = {
   reservationEmail: string;
   reservationCity: string;
   reservationRoomType: string;
+  selectedRoomType?: string | null;
   reservationGuests: number;
   startDate: string;
   endDate: string;
@@ -30,6 +32,7 @@ export default function Reservations({
   reservationEmail,
   reservationCity,
   reservationRoomType,
+  selectedRoomType,
   reservationGuests,
   startDate,
   endDate,
@@ -80,11 +83,18 @@ export default function Reservations({
           Réservation rapide
         </h3>
 
-        {selectedOffer && (
-          <div className="mb-4 text-center">
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
-              Offre choisie : {selectedOffer}
-            </span>
+        {(selectedOffer || selectedRoomType) && (
+          <div className="mb-4 flex flex-wrap items-center justify-center gap-2 text-center">
+            {selectedOffer && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200">
+                Offre choisie : {selectedOffer}
+              </span>
+            )}
+            {selectedRoomType && (
+              <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-800 dark:bg-white/10 dark:text-slate-100">
+                Type de chambre : {selectedRoomType}
+              </span>
+            )}
           </div>
         )}
 
@@ -117,7 +127,7 @@ export default function Reservations({
               type="text"
               placeholder="Nom"
               value={reservationName}
-              onChange={(event) => onNameChange(event.target.value)}
+              onChange={(event) => onNameChange(sanitizeName(event.target.value))}
               aria-label="Nom"
               className="input-field"
             />

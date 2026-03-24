@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { authenticate, setSession } from "../lib/auth";
 
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const coverImage = new URL("../assets/Hotel.jpg", import.meta.url).href;
 
   const handleLogin = (e: React.FormEvent) => {
@@ -13,9 +15,18 @@ export default function Login() {
     if (isSubmitting) return;
     if (!email.trim() || !password.trim()) return;
     setIsSubmitting(true);
-    localStorage.setItem("faby_logged", "true");
+
+    const result = authenticate(email, password);
+    if (!result.ok) {
+      setError(result.error);
+      setIsSubmitting(false);
+      return;
+    }
+
+    setSession(result.user);
     setEmail("");
     setPassword("");
+    setError(null);
     navigate("/", { state: { scrollToReservation: true } });
     setIsSubmitting(false);
   };
@@ -67,6 +78,8 @@ export default function Login() {
               Entrez vos identifiants pour accéder à votre tableau de bord.
             </p>
           </div>
+
+          {error ? <div className="alert alert-error">{error}</div> : null}
 
           <div className="space-y-1">
             <label htmlFor="login-email" className="text-sm font-semibold text-slate-700 dark:text-slate-200">

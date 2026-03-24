@@ -1,6 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap");
 @import "tailwindcss";
 
+/* Tailwind dark mode strategy: class-based ("dark:" reacts to .dark on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     color-scheme: light;
@@ -10,6 +13,10 @@
     --brand-600: #059669;
     --brand-700: #047857;
     --ink-900: #0b0d0f;
+  }
+
+  .dark {
+    color-scheme: dark;
   }
 
   body {

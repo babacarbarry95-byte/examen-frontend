@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { registerUser, setSession } from "../lib/auth";
+import { sanitizeName, sanitizePhoneDigits } from "../lib/input";
 
 type InscriptionProps = {
   onSuccess: () => void;
@@ -65,8 +67,8 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
       nextErrors.email = "L'email n'est pas valide.";
     }
 
-    if (telephone && !/^[+\d\s().-]{6,}$/.test(telephone)) {
-      nextErrors.telephone = "Le numéro de téléphone n'est pas valide.";
+    if (telephone && !/^\d{6,15}$/.test(telephone)) {
+      nextErrors.telephone = "Le numéro de téléphone doit contenir uniquement des chiffres (6 à 15).";
     }
 
     if (!password) nextErrors.password = "Le mot de passe est requis.";
@@ -122,6 +124,25 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
 
     if (nextErrors.length === 0) {
       setIsSubmitting(true);
+
+      const result = registerUser({
+        nom: nom.trim(),
+        prenom: prenom.trim(),
+        sexe,
+        age: Number(age),
+        email,
+        telephone: telephone.trim() || undefined,
+        nationalite: nationalite.trim() || undefined,
+        password,
+      });
+
+      if (!result.ok) {
+        setErrors([result.error]);
+        setIsSubmitting(false);
+        return;
+      }
+
+      setSession(result.user);
       resetForm();
       onSuccess();
       setIsSubmitting(false);
@@ -183,15 +204,15 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
             <label htmlFor="nom" className={labelBase}>
               Nom
             </label>
-            <input
-              id="nom"
-              type="text"
-              value={nom}
-              onChange={(e) => setNom(e.target.value)}
-              onBlur={() => markTouched("nom")}
-              className={inputBase}
-              placeholder="Dupont"
-            />
+              <input
+                id="nom"
+                type="text"
+                value={nom}
+                onChange={(e) => setNom(sanitizeName(e.target.value))}
+                onBlur={() => markTouched("nom")}
+                className={inputBase}
+                placeholder="Dupont"
+              />
             {renderError("nom")}
           </div>
 
@@ -199,15 +220,15 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
             <label htmlFor="prenom" className={labelBase}>
               Prénom
             </label>
-            <input
-              id="prenom"
-              type="text"
-              value={prenom}
-              onChange={(e) => setPrenom(e.target.value)}
-              onBlur={() => markTouched("prenom")}
-              className={inputBase}
-              placeholder="Marie"
-            />
+              <input
+                id="prenom"
+                type="text"
+                value={prenom}
+                onChange={(e) => setPrenom(sanitizeName(e.target.value))}
+                onBlur={() => markTouched("prenom")}
+                className={inputBase}
+                placeholder="Marie"
+              />
             {renderError("prenom")}
           </div>
         </div>
@@ -301,10 +322,12 @@ export default function Inscription({ onSuccess, onSwitchToLogin }: InscriptionP
               id="telephone"
               type="tel"
               value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              onChange={(e) => setTelephone(sanitizePhoneDigits(e.target.value))}
               onBlur={() => markTouched("telephone")}
               className={inputBase}
-              placeholder="+33 6 12 34 56 78"
+              placeholder="771234567"
             />
             {renderError("telephone")}
           </div>

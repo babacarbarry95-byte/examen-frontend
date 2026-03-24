@@ -1,32 +1,38 @@
+import { formatCfa, OFFER_PRICE_CFA } from "../lib/pricing";
+
 const offers = [
   {
     title: "Escapade romantique",
     description: "Suite avec vue, dîner aux chandelles et accueil sur mesure. ",
     image: new URL("../assets/couple.jpg", import.meta.url).href,
     tag: "Week-end",
+    priceCfa: OFFER_PRICE_CFA["Escapade romantique"],
   },
   {
     title: "Séjour business",
     description: "Chambre executive, salle de réunion et petit-déjeuner express.",
     image: new URL("../assets/business.jpg", import.meta.url).href,
     tag: "Business",
+    priceCfa: OFFER_PRICE_CFA["Séjour business"],
   },
   {
     title: "Pack famille",
     description: "Deux chambres communicantes, activités enfants et espace lounge.",
     image: new URL("../assets/packFamille.jpg", import.meta.url).href,
     tag: "Famille",
+    priceCfa: OFFER_PRICE_CFA["Pack famille"],
   },
   {
     title: "Suite prestige",
     description: "Espace salon privé, service dédié et attentions exclusives.",
     image: new URL("../assets/chambre3.jpg", import.meta.url).href,
     tag: "Luxe",
+    priceCfa: OFFER_PRICE_CFA["Suite prestige"],
   },
 ];
 
 type OffresProps = {
-  onReserve: (offerTitle: string) => void;
+  onReserve: (offer: { title: string; priceCfa: number }) => void;
 };
 
 export default function Offres({ onReserve }: OffresProps) {
@@ -68,8 +74,17 @@ export default function Offres({ onReserve }: OffresProps) {
                   {offer.title}
                 </h3>
                 <p className="text-slate-600 text-sm dark:text-slate-300">{offer.description}</p>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {formatCfa(offer.priceCfa)}
+                    <span className="ml-1 text-xs font-medium text-slate-500 dark:text-slate-400">/ nuit</span>
+                  </p>
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    Offre pack
+                  </span>
+                </div>
                 <button
-                  onClick={() => onReserve(offer.title)}
+                  onClick={() => onReserve({ title: offer.title, priceCfa: offer.priceCfa })}
                   className="btn btn-primary mt-4 w-full"
                 >
                   Réserver

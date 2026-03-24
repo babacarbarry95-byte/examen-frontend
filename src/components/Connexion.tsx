@@ -1,5 +1,6 @@
 ﻿import { useState } from "react";
 import { Link } from "react-router-dom";
+import { authenticate, setSession } from "../lib/auth";
 
 type ConnexionProps = {
   showPassword: boolean;
@@ -36,6 +37,15 @@ export default function Connexion({
     setErrors(nextErrors);
     if (nextErrors.length === 0) {
       setIsSubmitting(true);
+
+      const result = authenticate(email, password);
+      if (!result.ok) {
+        setErrors([result.error]);
+        setIsSubmitting(false);
+        return;
+      }
+
+      setSession(result.user);
       resetForm();
       onSuccess();
       setIsSubmitting(false);
