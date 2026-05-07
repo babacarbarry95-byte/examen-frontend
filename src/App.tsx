@@ -8,6 +8,7 @@ import APropos from "./components/APropos";
 import Temoignages from "./components/Temoignages";
 import ThemeToggle from "./components/ThemeToggle";
 import ThemeExample from "./components/ThemeExample";
+import HotelChatWidget from "./components/HotelChatWidget";
 import { ThemeProvider } from "./theme/ThemeProvider";
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           </Routes>
 
           <ThemeToggle />
+          <HotelChatWidget />
         </div>
       </BrowserRouter>
     </ThemeProvider>

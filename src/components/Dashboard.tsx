@@ -1,726 +1,724 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { formatCfa, getOfferPriceCfa, getRoomPriceCfa } from "../lib/pricing";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { clearSession, getCurrentUser, normalizeEmail, updateUser, type FabyUser } from "../lib/auth";
+import { sanitizeName, sanitizePhoneDigits } from "../lib/input";
+import { formatCfa } from "../lib/pricing";
+import {
+  getAvailableRoomsCount,
+  getReservations,
+  getReservationStatusLabel,
+  isRoomAvailable,
+  saveReservations,
+  type ReservationRecord,
+  type ReservationStatus,
+  type RoomType,
+} from "../lib/reservations";
 
-type Reservation = {
-  id: number;
-  name: string;
+type ProfileFormState = {
+  nom: string;
+  prenom: string;
+  telephone: string;
+  nationalite: string;
+  age: string;
+  sexe: string;
   email: string;
+};
+
+type EditReservationState = {
+  id: number;
   city: string;
-  roomType: string;
+  roomType: RoomType;
   guests: number;
   startDate: string;
   endDate: string;
-  duration: number;
-  status: "confirmée" | "terminée" | "annulée";
-  offer?: string;
-  unitPriceCfa?: number;
-  totalPriceCfa?: number;
-  priceSource?: "offre" | "chambre";
 };
-
-function getReservations(): Reservation[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem("faby_reservations") || "[]") as Reservation[];
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
-    }
-
-    // Demo seed: 3 finished reservations (only when there is no data yet).
-    const seeded: Reservation[] = [
-      {
-        id: Date.now() - 1000 * 60 * 60 * 24 * 12,
-        name: "Moussa Ndiaye",
-        email: "ndiaye@gmail.com",
-        city: "Dakar",
-        roomType: "Deluxe",
-        guests: 2,
-        startDate: "2026-03-10",
-        endDate: "2026-03-13",
-        duration: 3,
-        status: "terminée",
-        unitPriceCfa: getRoomPriceCfa("Deluxe"),
-        totalPriceCfa: getRoomPriceCfa("Deluxe") * 3,
-        priceSource: "chambre",
-      },
-      {
-        id: Date.now() - 1000 * 60 * 60 * 24 * 9,
-        name: "Mariama Goundiam",
-        email: "mariama.goundiam@gmail.com",
-        city: "Saly",
-        roomType: "Suite",
-        guests: 3,
-        startDate: "2026-03-14",
-        endDate: "2026-03-16",
-        duration: 2,
-        status: "terminée",
-        offer: "Escapade romantique",
-        unitPriceCfa: getOfferPriceCfa("Escapade romantique"),
-        totalPriceCfa: getOfferPriceCfa("Escapade romantique") * 2,
-        priceSource: "offre",
-      },
-      {
-        id: Date.now() - 1000 * 60 * 60 * 24 * 6,
-        name: "Fatou Sow",
-        email: "fatou.sow@gmail.com",
-        city: "Saint-Louis",
-        roomType: "Standard",
-        guests: 1,
-        startDate: "2026-03-18",
-        endDate: "2026-03-21",
-        duration: 3,
-        status: "terminée",
-        offer: "Séjour business",
-        unitPriceCfa: getOfferPriceCfa("Séjour business"),
-        totalPriceCfa: getOfferPriceCfa("Séjour business") * 3,
-        priceSource: "offre",
-      },
-    ];
-
-    localStorage.setItem("faby_reservations", JSON.stringify(seeded));
-    return seeded;
-  } catch {
-    return [];
-  }
-}
 
 function formatDate(dateStr: string) {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("fr-FR", {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("fr-FR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   });
 }
 
-function getReservationPricing(reservation: Reservation) {
-  const offerUnit = reservation.offer ? getOfferPriceCfa(reservation.offer) : 0;
-  const roomUnit = getRoomPriceCfa(reservation.roomType);
-  const inferredUnit = reservation.unitPriceCfa ?? (offerUnit || roomUnit);
-
-  const inferredTotal = reservation.totalPriceCfa ?? inferredUnit * reservation.duration;
-  const inferredSource =
-    reservation.priceSource ?? (reservation.offer ? ("offre" as const) : ("chambre" as const));
-
+function createProfileForm(user: FabyUser): ProfileFormState {
   return {
-    unitPriceCfa: inferredUnit,
-    totalPriceCfa: inferredTotal,
-    priceSource: inferredSource,
+    nom: user.nom ?? "",
+    prenom: user.prenom ?? "",
+    telephone: user.telephone ?? "",
+    nationalite: user.nationalite ?? "",
+    age: user.age ? String(user.age) : "",
+    sexe: user.sexe ?? "",
+    email: user.email,
   };
 }
 
-function buildCounts(values: Array<string | undefined | null>) {
-  const map: Record<string, number> = {};
-  for (const value of values) {
-    const key = (value ?? "").trim();
-    if (!key) continue;
-    map[key] = (map[key] ?? 0) + 1;
+function computeDuration(startDate: string, endDate: string) {
+  if (!startDate || !endDate) return null;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  const diffMs = end.getTime() - start.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  return diffDays > 0 ? diffDays : null;
+}
+
+function getStatusClass(status: ReservationStatus) {
+  switch (status) {
+    case "en_attente":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200";
+    case "confirmee":
+      return "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200";
+    case "payee":
+      return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200";
+    case "annulee":
+      return "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200";
+    case "terminee":
+      return "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200";
   }
-  return map;
-}
-
-function toSortedItems(map: Record<string, number>, maxItems?: number) {
-  const items = Object.entries(map)
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, "fr-FR"));
-  return typeof maxItems === "number" ? items.slice(0, maxItems) : items;
-}
-
-function pct(value: number, total: number) {
-  if (!total) return 0;
-  return Math.round((value / total) * 100);
-}
-
-function DonutChart({
-  items,
-  total,
-  centerLabel,
-}: {
-  items: Array<{ label: string; value: number; color: string }>;
-  total: number;
-  centerLabel: string;
-}) {
-  const radius = 16;
-  const stroke = 6;
-  const cx = 20;
-  const cy = 20;
-  const circumference = 2 * Math.PI * radius;
-  const visibleItems = items.filter((item) => item.value > 0);
-  const dashList = visibleItems.map((item) => (item.value / Math.max(1, total)) * circumference);
-
-  return (
-    <div className="relative mx-auto h-44 w-44">
-      <svg viewBox="0 0 40 40" className="h-full w-full" role="img" aria-label={centerLabel}>
-        <circle
-          cx={cx}
-          cy={cy}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          className="text-slate-200 dark:text-slate-800"
-        />
-
-        {visibleItems.map((item, index) => {
-          const dash = dashList[index] ?? 0;
-          const offset = dashList.slice(0, index).reduce((sum, value) => sum + value, 0);
-          return (
-            <circle
-              key={item.label}
-              cx={cx}
-              cy={cy}
-              r={radius}
-              fill="none"
-              stroke={item.color}
-              strokeWidth={stroke}
-              strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeDashoffset={-offset}
-              strokeLinecap="butt"
-              transform={`rotate(-90 ${cx} ${cy})`}
-            />
-          );
-        })}
-      </svg>
-
-      <div className="absolute inset-0 grid place-items-center text-center">
-        <div>
-          <p className="text-3xl font-bold text-slate-900 dark:text-slate-100">{total}</p>
-          <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">{centerLabel}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BarList({
-  items,
-  total,
-  colors,
-  valueSuffix,
-}: {
-  items: Array<{ label: string; value: number; hint?: string }>;
-  total: number;
-  colors: string[];
-  valueSuffix?: string;
-}) {
-  if (total === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-        Aucune donnée pour afficher une répartition.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {items.map((item, index) => {
-        const percentage = pct(item.value, total);
-        const color = colors[index % colors.length];
-        return (
-          <div key={item.label}>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{item.label}</p>
-                {item.hint ? (
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{item.hint}</p>
-                ) : null}
-              </div>
-              <p className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {item.value}
-                {valueSuffix ?? ""} · {percentage}%
-              </p>
-            </div>
-            <div className="mt-2 h-2 w-full rounded-full bg-slate-200 dark:bg-slate-800">
-              <div className="h-2 rounded-full" style={{ width: `${percentage}%`, backgroundColor: color }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 export default function Dashboard() {
-  const [reservations, setReservations] = useState<Reservation[]>(() => getReservations());
-
-  const handleDelete = (id: number) => {
-    const updated = reservations.filter((r) => r.id !== id);
-    setReservations(updated);
-    localStorage.setItem("faby_reservations", JSON.stringify(updated));
-  };
-
-  const handleCancelToggle = (id: number) => {
-    const updated = reservations.map((r) => {
-      if (r.id !== id) return r;
-      if (r.status === "terminée") return r;
-      return {
-        ...r,
-        status: (r.status === "annulée" ? "confirmée" : "annulée") as Reservation["status"],
-      };
-    });
-    setReservations(updated);
-    localStorage.setItem("faby_reservations", JSON.stringify(updated));
-  };
-
-  const handleMarkFinished = (id: number) => {
-    const updated = reservations.map((r) => {
-      if (r.id !== id) return r;
-      if (r.status !== "confirmée") return r;
-      return {
-        ...r,
-        status: "terminée" as const,
-      };
-    });
-    setReservations(updated);
-    localStorage.setItem("faby_reservations", JSON.stringify(updated));
-  };
-
-  const handleReopen = (id: number) => {
-    const updated = reservations.map((r) => {
-      if (r.id !== id) return r;
-      if (r.status !== "terminée") return r;
-      return {
-        ...r,
-        status: "confirmée" as const,
-      };
-    });
-    setReservations(updated);
-    localStorage.setItem("faby_reservations", JSON.stringify(updated));
-  };
-
-  const confirmed = reservations.filter((r) => r.status === "confirmée");
-  const cancelled = reservations.filter((r) => r.status === "annulée");
-  const finished = reservations.filter((r) => r.status === "terminée");
-  const totalNights = reservations.reduce((sum, r) => sum + r.duration, 0);
-  const totalGuests = reservations.reduce((sum, r) => sum + r.guests, 0);
-  const revenueReservations = reservations.filter((r) => r.status !== "annulée");
-  const hotelRevenueCfa = revenueReservations.reduce(
-    (sum, r) => sum + getReservationPricing(r).totalPriceCfa,
-    0,
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<FabyUser | null>(() => getCurrentUser());
+  const [profileForm, setProfileForm] = useState<ProfileFormState>(() =>
+    getCurrentUser()
+      ? createProfileForm(getCurrentUser() as FabyUser)
+      : createProfileForm({ id: "", createdAt: 0, email: "", password: "" }),
   );
+  const [reservations, setReservations] = useState<ReservationRecord[]>(() => getReservations());
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [editReservation, setEditReservation] = useState<EditReservationState | null>(null);
+  const [reservationMessage, setReservationMessage] = useState<string | null>(null);
+  const [reservationError, setReservationError] = useState<string | null>(null);
 
-  const statusItems = useMemo(() => {
-    const counts = buildCounts(reservations.map((r) => r.status));
-    return [
-      { label: "Confirmées", value: counts["confirmée"] ?? 0, color: "#10b981" },
-      { label: "Annulées", value: counts["annulée"] ?? 0, color: "#fb7185" },
-      { label: "Terminées", value: counts["terminée"] ?? 0, color: "#94a3b8" },
-    ];
-  }, [reservations]);
-
-  const roomTypeItems = useMemo(() => {
-    const counts = buildCounts(reservations.map((r) => r.roomType));
-    const nightsByType: Record<string, number> = {};
-    const revenueByType: Record<string, number> = {};
-    for (const r of reservations) {
-      nightsByType[r.roomType] = (nightsByType[r.roomType] ?? 0) + r.duration;
-      if (r.status !== "annulée") {
-        revenueByType[r.roomType] = (revenueByType[r.roomType] ?? 0) + getReservationPricing(r).totalPriceCfa;
-      }
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user) {
+      navigate("/", { replace: true });
+      return;
     }
-    return toSortedItems(counts).map((it) => ({
-      ...it,
-      hint: `${nightsByType[it.label] ?? 0} nuit(s) · ${formatCfa(revenueByType[it.label] ?? 0)}`,
-    }));
-  }, [reservations]);
 
-  const cityItems = useMemo(() => {
-    const counts = buildCounts(reservations.map((r) => r.city));
-    return toSortedItems(counts, 6);
-  }, [reservations]);
+    const storedReservations = getReservations();
+    const migratedReservations = storedReservations.map((reservation) => {
+      if (reservation.userId || normalizeEmail(reservation.email) !== normalizeEmail(user.email)) {
+        return reservation;
+      }
 
-  const offerStats = useMemo(() => {
-    const counts = buildCounts(reservations.map((r) => r.offer));
-    const items = toSortedItems(counts, 6);
-    const total = items.reduce((sum, item) => sum + item.value, 0);
-    return { items, total };
-  }, [reservations]);
+      return {
+        ...reservation,
+        userId: user.id,
+      };
+    });
+
+    const hasMigration = migratedReservations.some(
+      (reservation, index) => reservation.userId !== storedReservations[index]?.userId,
+    );
+
+    if (hasMigration) {
+      saveReservations(migratedReservations);
+    }
+
+    setCurrentUser(user);
+    setProfileForm(createProfileForm(user));
+    setReservations(migratedReservations);
+  }, [navigate]);
+
+  const myReservations = useMemo(() => {
+    return reservations
+      .filter((reservation) => reservation.userId === currentUser?.id)
+      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+  }, [currentUser?.id, reservations]);
+
+  const stats = useMemo(() => {
+    const pending = myReservations.filter((reservation) => reservation.status === "en_attente").length;
+    const confirmed = myReservations.filter((reservation) => reservation.status === "confirmee").length;
+    const paid = myReservations.filter((reservation) => reservation.status === "payee").length;
+    const cancelled = myReservations.filter((reservation) => reservation.status === "annulee").length;
+    const finished = myReservations.filter((reservation) => reservation.status === "terminee").length;
+    const totalNights = myReservations.reduce((sum, reservation) => sum + reservation.duration, 0);
+    const totalSpent = myReservations
+      .filter((reservation) => reservation.status !== "annulee")
+      .reduce((sum, reservation) => sum + (reservation.totalPriceCfa ?? 0), 0);
+
+    return { pending, confirmed, paid, cancelled, finished, totalNights, totalSpent };
+  }, [myReservations]);
+
+  const editDuration = editReservation
+    ? computeDuration(editReservation.startDate, editReservation.endDate)
+    : null;
+
+  const editAvailability = useMemo(() => {
+    if (!editReservation) return null;
+
+    const remaining = getAvailableRoomsCount(
+      editReservation.roomType,
+      editReservation.startDate,
+      editReservation.endDate,
+      reservations,
+      { excludeReservationId: editReservation.id },
+    );
+
+    return {
+      remaining,
+      isAvailable:
+        !!editDuration &&
+        isRoomAvailable(
+          editReservation.roomType,
+          editReservation.startDate,
+          editReservation.endDate,
+          reservations,
+          { excludeReservationId: editReservation.id },
+        ),
+    };
+  }, [editDuration, editReservation, reservations]);
+
+  if (!currentUser) {
+    return null;
+  }
+
+  const handleProfileChange = (field: keyof ProfileFormState, value: string) => {
+    setProfileForm((prev) => ({ ...prev, [field]: value }));
+    setProfileMessage(null);
+    setProfileError(null);
+  };
+
+  const handleProfileSave = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!currentUser) return;
+
+    if (!profileForm.nom.trim() || !profileForm.prenom.trim()) {
+      setProfileError("Le nom et le prenom sont requis.");
+      return;
+    }
+
+    const result = updateUser(currentUser.id, {
+      nom: profileForm.nom.trim(),
+      prenom: profileForm.prenom.trim(),
+      telephone: profileForm.telephone.trim() || undefined,
+      nationalite: profileForm.nationalite.trim() || undefined,
+      sexe: profileForm.sexe.trim() || undefined,
+      age: profileForm.age ? Number(profileForm.age) : undefined,
+      email: profileForm.email,
+    });
+
+    if (!result.ok) {
+      setProfileError(result.error);
+      return;
+    }
+
+    setCurrentUser(result.user);
+    setProfileForm(createProfileForm(result.user));
+    setProfileMessage("Vos informations personnelles ont ete mises a jour.");
+  };
+
+  const handleLogout = () => {
+    clearSession();
+    navigate("/", { replace: true });
+  };
+
+  const handleCancelReservation = (reservationId: number) => {
+    const nextReservations = reservations.map((reservation) =>
+      reservation.id === reservationId &&
+      (reservation.status === "en_attente" ||
+        reservation.status === "confirmee" ||
+        reservation.status === "payee")
+        ? { ...reservation, status: "annulee" as const }
+        : reservation,
+    );
+
+    saveReservations(nextReservations);
+    setReservations(nextReservations);
+    setReservationMessage("La reservation a ete annulee.");
+    setReservationError(null);
+  };
+
+  const handleOpenEdit = (reservation: ReservationRecord) => {
+    setEditReservation({
+      id: reservation.id,
+      city: reservation.city,
+      roomType: reservation.roomType,
+      guests: reservation.guests,
+      startDate: reservation.startDate,
+      endDate: reservation.endDate,
+    });
+    setReservationMessage(null);
+    setReservationError(null);
+  };
+
+  const handleSaveReservation = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editReservation || !editDuration) {
+      setReservationError("Veuillez choisir des dates valides.");
+      return;
+    }
+
+    if (
+      !isRoomAvailable(
+        editReservation.roomType,
+        editReservation.startDate,
+        editReservation.endDate,
+        reservations,
+        { excludeReservationId: editReservation.id },
+      )
+    ) {
+      setReservationError("Aucune chambre disponible pour ces nouvelles dates.");
+      return;
+    }
+
+    const nextReservations = reservations.map((reservation) => {
+      if (reservation.id !== editReservation.id) return reservation;
+
+      const unitPriceCfa = reservation.unitPriceCfa ?? 0;
+      return {
+        ...reservation,
+        city: editReservation.city.trim() || reservation.city,
+        roomType: editReservation.roomType,
+        guests: editReservation.guests,
+        startDate: editReservation.startDate,
+        endDate: editReservation.endDate,
+        duration: editDuration,
+        totalPriceCfa: unitPriceCfa * editDuration,
+      };
+    });
+
+    saveReservations(nextReservations);
+    setReservations(nextReservations);
+    setEditReservation(null);
+    setReservationMessage("La reservation a ete modifiee.");
+    setReservationError(null);
+  };
 
   return (
     <div className="min-h-screen bg-white text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
-      {/* Header */}
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 shadow-lg shadow-black/10 backdrop-blur dark:border-white/10 dark:bg-slate-950/80">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link
-            to="/"
-            className="text-2xl font-semibold tracking-tight text-emerald-700 dark:text-emerald-300"
-          >
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          <Link to="/" className="text-2xl font-semibold tracking-tight text-emerald-700 dark:text-emerald-300">
             FABY Hotel
           </Link>
-          <Link
-            to="/"
-            className="btn btn-primary text-sm"
-          >
-            ← Retour à l'accueil
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/"
+              className="btn border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:text-slate-100 dark:hover:bg-white/10"
+            >
+              Retour a l'accueil
+            </Link>
+            <button type="button" onClick={handleLogout} className="btn btn-primary">
+              Deconnexion
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        {/* Title */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-8">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-300 font-semibold">
-              Tableau de bord
+      <div className="max-w-6xl mx-auto px-6 py-10 space-y-8">
+        <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">
+              Espace client
             </p>
-            <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-slate-100">
-              Vos réservations
+            <h1 className="mt-3 text-3xl font-bold text-slate-900 dark:text-slate-100">
+              Bonjour {currentUser.prenom || currentUser.nom || "client"}
             </h1>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-10">
-          <div className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total réservations</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">{reservations.length}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/5">
-            <p className="text-xs uppercase tracking-wide text-emerald-600 dark:text-emerald-300">Confirmées</p>
-            <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">{confirmed.length}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total nuitées</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-slate-100 mt-1">{totalNights}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm dark:border-emerald-500/20 dark:bg-emerald-500/5">
-            <p className="text-xs uppercase tracking-wide text-emerald-600 dark:text-emerald-300">Revenu hôtel</p>
-            <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">{formatCfa(hotelRevenueCfa)}</p>
-            <p className="mt-2 text-xs text-emerald-700/80 dark:text-emerald-200/80">
-              Hors réservations annulées
+            <p className="mt-3 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+              Retrouvez ici vos reservations, vos informations personnelles et les actions utiles pour gerer votre sejour.
             </p>
           </div>
-        </div>
 
-        {/* Analytics */}
-        <section className="mb-10">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between mb-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold">
-                Statistiques
-              </p>
-              <h2 className="text-xl sm:text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                Répartitions & tendances rapides
-              </h2>
-            </div>
-            {reservations.length > 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Moyenne: {Math.round(totalNights / reservations.length)} nuit(s) · {Math.round(totalGuests / reservations.length)} pers. ·{" "}
-                {formatCfa(Math.round(hotelRevenueCfa / Math.max(1, revenueReservations.length)))}
-              </p>
-            ) : null}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+            <StatCard label="Mes reservations" value={String(myReservations.length)} />
+            <StatCard label="En attente" value={String(stats.pending)} />
+            <StatCard label="Confirmees" value={String(stats.confirmed)} accent />
+            <StatCard label="Payees" value={String(stats.paid)} accent />
+            <StatCard label="Terminees" value={String(stats.finished)} />
+            <StatCard label="Budget total" value={formatCfa(stats.totalSpent)} accent />
           </div>
-
-          {reservations.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Ajoutez une première réservation pour afficher les diagrammes de répartition.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Statut des réservations</h3>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Diagramme en anneau</p>
-                  </div>
-                  <div className="text-right text-xs text-slate-500 dark:text-slate-400">
-                    <p>Annulées: {cancelled.length}</p>
-                    <p>Terminées: {finished.length}</p>
-                  </div>
-                </div>
-
-                <DonutChart items={statusItems} total={reservations.length} centerLabel="Réservations" />
-
-                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-                  {statusItems.map((item) => (
-                    <div key={item.label} className="rounded-xl border border-slate-200/60 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
-                      <div className="mx-auto mb-2 h-2 w-10 rounded-full" style={{ backgroundColor: item.color }} />
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{item.label}</p>
-                      <p className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100">{item.value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-                <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Répartition par type de chambre</h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Barres de progression</p>
-                <div className="mt-5">
-                  <BarList
-                    items={roomTypeItems}
-                    total={reservations.length}
-                    colors={["#10b981", "#34d399", "#60a5fa", "#a78bfa"]}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Répartition par ville</h3>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Top 6</p>
-                  <div className="mt-5">
-                    <BarList items={cityItems} total={reservations.length} colors={["#0ea5e9", "#22c55e", "#f59e0b", "#fb7185", "#a78bfa", "#94a3b8"]} />
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Répartition par offre</h3>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Uniquement si une offre a été choisie</p>
-                  <div className="mt-5">
-                    {offerStats.items.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                        Aucune offre enregistrée pour le moment.
-                      </div>
-                    ) : (
-                      <BarList
-                        items={offerStats.items}
-                        total={offerStats.total}
-                        colors={["#10b981", "#60a5fa", "#f59e0b", "#fb7185", "#a78bfa", "#94a3b8"]}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </section>
 
-        {/* Empty state */}
-        {reservations.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 p-12 text-center dark:border-slate-700">
-            <svg viewBox="0 0 24 24" className="mx-auto h-12 w-12 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-            </svg>
-            <h3 className="mt-4 text-lg font-semibold text-slate-700 dark:text-slate-200">
-              Aucune réservation
-            </h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Vous n'avez pas encore de réservation. Rendez-vous sur la page d'accueil pour réserver.
-            </p>
-            <Link to="/" className="btn btn-primary mt-6 inline-flex">
-              Réserver maintenant
-            </Link>
-          </div>
-        )}
+        <section className="grid gap-8 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">
+                  Mes reservations
+                </p>
+                <h2 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                  Suivi de sejour
+                </h2>
+              </div>
+            </div>
 
-        {/* Reservations list */}
-        {reservations.length > 0 && (
-          <div className="space-y-6">
-            {/* Confirmed */}
-            {confirmed.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                    Réservations confirmées
-                  </h2>
-                  <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-semibold dark:bg-emerald-500/20 dark:text-emerald-200">
-                    {confirmed.length}
-                  </span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {confirmed.map((r) => (
-                    <ReservationCard
-                      key={r.id}
-                      reservation={r}
-                      onDelete={handleDelete}
-                      onCancelToggle={handleCancelToggle}
-                      onMarkFinished={handleMarkFinished}
-                      onReopen={handleReopen}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
+            {reservationMessage ? <div className="alert alert-success">{reservationMessage}</div> : null}
+            {reservationError ? <div className="alert alert-error">{reservationError}</div> : null}
 
-            {/* Finished */}
-            {finished.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                    Réservations terminées
-                  </h2>
-                  <span className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold dark:bg-white/10 dark:text-slate-200">
-                    {finished.length}
-                  </span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {finished.map((r) => (
-                    <ReservationCard
-                      key={r.id}
-                      reservation={r}
-                      onDelete={handleDelete}
-                      onCancelToggle={handleCancelToggle}
-                      onMarkFinished={handleMarkFinished}
-                      onReopen={handleReopen}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Cancelled */}
-            {cancelled.length > 0 && (
-              <section>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-                    Réservations annulées
-                  </h2>
-                  <span className="text-xs px-2 py-1 rounded-full bg-rose-100 text-rose-700 font-semibold dark:bg-rose-500/20 dark:text-rose-200">
-                    {cancelled.length}
-                  </span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {cancelled.map((r) => (
-                    <ReservationCard
-                      key={r.id}
-                      reservation={r}
-                      onDelete={handleDelete}
-                      onCancelToggle={handleCancelToggle}
-                      onMarkFinished={handleMarkFinished}
-                      onReopen={handleReopen}
-                    />
-                  ))}
-                </div>
-              </section>
+            {myReservations.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Vous n'avez pas encore de reservation. Rendez-vous sur la page d'accueil pour reserver votre premiere chambre.
+                </p>
+                <Link to="/" className="btn btn-primary mt-4 inline-flex">
+                  Reserver maintenant
+                </Link>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {myReservations.map((reservation) => (
+                  <ReservationClientCard
+                    key={reservation.id}
+                    reservation={reservation}
+                    onEdit={handleOpenEdit}
+                    onCancel={handleCancelReservation}
+                  />
+                ))}
+              </div>
             )}
           </div>
-        )}
+
+          <div className="space-y-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">
+                Mes informations personnelles
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
+                Profil client
+              </h2>
+            </div>
+
+            {profileMessage ? <div className="alert alert-success">{profileMessage}</div> : null}
+            {profileError ? <div className="alert alert-error">{profileError}</div> : null}
+
+            <form onSubmit={handleProfileSave} className="form-card space-y-4 p-5 sm:p-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Nom" id="profile-nom">
+                  <input
+                    id="profile-nom"
+                    value={profileForm.nom}
+                    onChange={(event) => handleProfileChange("nom", sanitizeName(event.target.value))}
+                    className="input-field"
+                  />
+                </Field>
+                <Field label="Prenom" id="profile-prenom">
+                  <input
+                    id="profile-prenom"
+                    value={profileForm.prenom}
+                    onChange={(event) => handleProfileChange("prenom", sanitizeName(event.target.value))}
+                    className="input-field"
+                  />
+                </Field>
+              </div>
+
+              <Field label="Email" id="profile-email">
+                <input
+                  id="profile-email"
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(event) => handleProfileChange("email", event.target.value)}
+                  className="input-field"
+                />
+              </Field>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Telephone" id="profile-telephone">
+                  <input
+                    id="profile-telephone"
+                    value={profileForm.telephone}
+                    onChange={(event) => handleProfileChange("telephone", sanitizePhoneDigits(event.target.value))}
+                    className="input-field"
+                  />
+                </Field>
+                <Field label="Nationalite" id="profile-nationalite">
+                  <input
+                    id="profile-nationalite"
+                    value={profileForm.nationalite}
+                    onChange={(event) => handleProfileChange("nationalite", event.target.value)}
+                    className="input-field"
+                  />
+                </Field>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Age" id="profile-age">
+                  <input
+                    id="profile-age"
+                    type="number"
+                    min={1}
+                    value={profileForm.age}
+                    onChange={(event) => handleProfileChange("age", event.target.value)}
+                    className="input-field"
+                  />
+                </Field>
+                <Field label="Sexe" id="profile-sexe">
+                  <select
+                    id="profile-sexe"
+                    value={profileForm.sexe}
+                    onChange={(event) => handleProfileChange("sexe", event.target.value)}
+                    className="input-field"
+                  >
+                    <option value="">Selectionner...</option>
+                    <option value="masculin">Masculin</option>
+                    <option value="feminin">Feminin</option>
+                    <option value="autres">Autres</option>
+                  </select>
+                </Field>
+              </div>
+
+              <button type="submit" className="btn btn-primary w-full">
+                Enregistrer mes informations
+              </button>
+            </form>
+          </div>
+        </section>
       </div>
+
+      {editReservation ? (
+        <div className="modal-overlay" onClick={() => setEditReservation(null)}>
+          <div className="modal-panel max-w-2xl" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setEditReservation(null)}
+              className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="Fermer"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                <path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z" />
+              </svg>
+            </button>
+
+            <div className="space-y-2 mb-6">
+              <p className="text-xs uppercase tracking-[0.35em] text-emerald-600 dark:text-emerald-300">
+                Modifier ma reservation
+              </p>
+              <h2 className="form-title">Ajustez votre sejour</h2>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Mettez a jour vos dates ou votre type de chambre. La disponibilite est reverifiee avant enregistrement.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveReservation} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Ville" id="edit-city">
+                  <input
+                    id="edit-city"
+                    value={editReservation.city}
+                    onChange={(event) =>
+                      setEditReservation((prev) => (prev ? { ...prev, city: event.target.value } : prev))
+                    }
+                    className="input-field"
+                  />
+                </Field>
+
+                <Field label="Type de chambre" id="edit-room-type">
+                  <select
+                    id="edit-room-type"
+                    value={editReservation.roomType}
+                    onChange={(event) =>
+                      setEditReservation((prev) =>
+                        prev ? { ...prev, roomType: event.target.value as RoomType } : prev,
+                      )
+                    }
+                    className="input-field"
+                  >
+                    <option value="Standard">Standard</option>
+                    <option value="Deluxe">Deluxe</option>
+                    <option value="Suite">Suite</option>
+                  </select>
+                </Field>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Personnes" id="edit-guests">
+                  <input
+                    id="edit-guests"
+                    type="number"
+                    min={1}
+                    value={editReservation.guests}
+                    onChange={(event) =>
+                      setEditReservation((prev) =>
+                        prev ? { ...prev, guests: Math.max(1, Number(event.target.value) || 1) } : prev,
+                      )
+                    }
+                    className="input-field"
+                  />
+                </Field>
+
+                <Field label="Arrivee" id="edit-start-date">
+                  <input
+                    id="edit-start-date"
+                    type="date"
+                    value={editReservation.startDate}
+                    onChange={(event) =>
+                      setEditReservation((prev) => (prev ? { ...prev, startDate: event.target.value } : prev))
+                    }
+                    className="input-field"
+                  />
+                </Field>
+
+                <Field label="Depart" id="edit-end-date">
+                  <input
+                    id="edit-end-date"
+                    type="date"
+                    value={editReservation.endDate}
+                    onChange={(event) =>
+                      setEditReservation((prev) => (prev ? { ...prev, endDate: event.target.value } : prev))
+                    }
+                    className="input-field"
+                  />
+                </Field>
+              </div>
+
+              <div className="space-y-2">
+                {editDuration ? (
+                  <div className="alert alert-success">Duree mise a jour : {editDuration} nuit(s).</div>
+                ) : (
+                  <div className="alert alert-warning">Choisissez des dates valides pour recalculer la duree.</div>
+                )}
+
+                {editAvailability ? (
+                  editAvailability.isAvailable ? (
+                    <div className="alert alert-success">
+                      Disponibilite : {editAvailability.remaining} chambre(s) restante(s) pour cette periode.
+                    </div>
+                  ) : (
+                    <div className="alert alert-error">
+                      Cette modification n'est pas possible : plus de chambre disponible pour ces dates.
+                    </div>
+                  )
+                ) : null}
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setEditReservation(null)}
+                  className="btn w-full border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:text-slate-100 dark:hover:bg-white/10"
+                >
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary w-full">
+                  Enregistrer les changements
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function ReservationCard({
-  reservation: r,
-  onDelete,
-  onCancelToggle,
-  onMarkFinished,
-  onReopen,
+function StatCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div
+      className={`rounded-2xl border p-5 shadow-sm ${
+        accent
+          ? "border-emerald-100 bg-emerald-50/50 dark:border-emerald-500/20 dark:bg-emerald-500/5"
+          : "border-slate-200 bg-white/90 dark:border-slate-800 dark:bg-slate-900/80"
+      }`}
+    >
+      <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100">{value}</p>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  id,
+  children,
 }: {
-  reservation: Reservation;
-  onDelete: (id: number) => void;
-  onCancelToggle: (id: number) => void;
-  onMarkFinished: (id: number) => void;
-  onReopen: (id: number) => void;
+  label: string;
+  id: string;
+  children: React.ReactNode;
 }) {
-  const borderColor =
-    r.status === "confirmée"
-      ? "border-emerald-100 dark:border-emerald-500/20"
-      : r.status === "terminée"
-      ? "border-slate-200 dark:border-slate-700"
-      : "border-rose-100 dark:border-rose-500/20";
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
 
-  const statusBadge =
-    r.status === "confirmée"
-      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200"
-      : r.status === "terminée"
-      ? "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-200"
-      : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200";
-
-  const pricing = getReservationPricing(r);
+function ReservationClientCard({
+  reservation,
+  onEdit,
+  onCancel,
+}: {
+  reservation: ReservationRecord;
+  onEdit: (reservation: ReservationRecord) => void;
+  onCancel: (reservationId: number) => void;
+}) {
+  const isEditable =
+    reservation.status === "en_attente" ||
+    reservation.status === "confirmee" ||
+    reservation.status === "payee";
 
   return (
-    <div className={`bg-white border ${borderColor} shadow-sm p-5 rounded-2xl transition-shadow hover:shadow-md dark:bg-slate-900`}>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-slate-900 dark:text-slate-100">
-          {r.city} — {r.roomType}
-        </h3>
-        <span className={`text-xs px-2 py-1 rounded-full font-semibold ${statusBadge}`}>
-          {r.status}
-        </span>
+    <article className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              {reservation.roomType} - {reservation.city}
+            </h3>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass(reservation.status)}`}>
+              {getReservationStatusLabel(reservation.status)}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {formatDate(reservation.startDate)} au {formatDate(reservation.endDate)} - {reservation.duration} nuit(s)
+          </p>
+        </div>
+
+        <div className="text-left sm:text-right">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Total</p>
+          <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+            {formatCfa(reservation.totalPriceCfa ?? 0)}
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Client</p>
-          <p className="font-medium text-slate-800 dark:text-slate-200">{r.name}</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Email</p>
-          <p className="font-medium text-slate-800 dark:text-slate-200 truncate">{r.email}</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Dates</p>
-          <p className="font-medium text-slate-800 dark:text-slate-200">
-            {formatDate(r.startDate)} → {formatDate(r.endDate)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Durée</p>
-          <p className="font-medium text-slate-800 dark:text-slate-200">{r.duration} nuit(s)</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Tarif</p>
-          <p className="font-medium text-slate-800 dark:text-slate-200">
-            {formatCfa(pricing.unitPriceCfa)} <span className="text-xs text-slate-500 dark:text-slate-400">/ nuit</span>
-          </p>
-          <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-            Total: {formatCfa(pricing.totalPriceCfa)}
-          </p>
-        </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
         <div>
           <p className="text-xs text-slate-500 dark:text-slate-400">Personnes</p>
-          <p className="font-medium text-slate-800 dark:text-slate-200">{r.guests}</p>
+          <p className="font-medium text-slate-800 dark:text-slate-200">{reservation.guests}</p>
         </div>
-        {r.offer && (
-          <div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Offre</p>
-            <p className="font-medium text-emerald-700 dark:text-emerald-300">{r.offer}</p>
-          </div>
-        )}
+        <div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Prix unitaire</p>
+          <p className="font-medium text-slate-800 dark:text-slate-200">{formatCfa(reservation.unitPriceCfa ?? 0)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Offre</p>
+          <p className="font-medium text-slate-800 dark:text-slate-200">{reservation.offer ?? "Aucune"}</p>
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mt-4">
-        {r.status === "confirmée" ? (
+      <div className="mt-4 flex flex-wrap gap-2">
+        {isEditable ? (
           <>
-            <button
-              type="button"
-              onClick={() => onCancelToggle(r.id)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-full transition border border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/10"
-            >
-              Annuler
+            <button type="button" onClick={() => onEdit(reservation)} className="btn btn-primary">
+              Modifier
             </button>
             <button
               type="button"
-              onClick={() => onMarkFinished(r.id)}
-              className="text-xs font-semibold px-3 py-1.5 rounded-full transition border border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-white/5"
+              onClick={() => onCancel(reservation.id)}
+              className="btn border border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/10"
             >
-              Marquer terminée
+              Annuler
             </button>
           </>
         ) : null}
 
-        {r.status === "annulée" ? (
-          <button
-            type="button"
-            onClick={() => onCancelToggle(r.id)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full transition border border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
-          >
-            Réactiver
-          </button>
+        {!isEditable ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-xs font-semibold text-slate-600 dark:border-white/10 dark:text-slate-300">
+            Cette reservation n'est plus modifiable depuis l'espace client. Pour toute mise a jour de statut, veuillez contacter l'hotel.
+          </div>
         ) : null}
-
-        {r.status === "terminée" ? (
-          <button
-            type="button"
-            onClick={() => onReopen(r.id)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-full transition border border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
-          >
-            Réouvrir
-          </button>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => onDelete(r.id)}
-          className="text-xs font-semibold px-3 py-1.5 rounded-full border border-rose-200 text-rose-600 transition hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-400 dark:hover:bg-rose-500/10"
-        >
-          Supprimer
-        </button>
       </div>
-    </div>
+    </article>
   );
 }
