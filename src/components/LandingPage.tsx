@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Chambres from "./Chambres";
 import Loisirs from "./Loisirs";
@@ -351,9 +351,11 @@ function App() {
             <a className="transition hover:text-emerald-700 dark:hover:text-emerald-300" href="#loisirs">
               Loisirs
             </a>
-            <Link className="transition hover:text-emerald-700 dark:hover:text-emerald-300" to="/dashboard">
-              Dashboard
-            </Link>
+            {isLogged && (
+              <Link className="transition hover:text-emerald-700 dark:hover:text-emerald-300" to="/dashboard">
+                Dashboard
+              </Link>
+            )}
             {!isLogged ? (
               <button
                 type="button"
@@ -426,13 +428,15 @@ function App() {
                   </a>
                 ))}
 
-                <Link
-                  to="/dashboard"
-                  onClick={() => setMobileNavOpen(false)}
-                  className="rounded-xl px-3 py-2 transition hover:bg-slate-100 dark:hover:bg-white/10"
-                >
-                  Dashboard
-                </Link>
+                {isLogged && (
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="rounded-xl px-3 py-2 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                  >
+                    Dashboard
+                  </Link>
+                )}
               </div>
 
               {!isLogged ? (
